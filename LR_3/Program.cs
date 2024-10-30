@@ -81,12 +81,15 @@ class Program
 
         if (found)
         {
+            Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"Элемент {searchElement} найден в хеш-таблице.");
         }
         else
         {
+            Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"Элемент {searchElement} не найден в хеш-таблице.");
         }
+        Console.ResetColor();
     }
 
     // Хеш-функция для деления по модулю
