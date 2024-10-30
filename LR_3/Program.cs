@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 
 class Program
@@ -11,25 +10,51 @@ class Program
         int upperBound = 89000;
         int M = 10;
 
-        // Генерация массива из n целых чисел в заданном диапазоне
-        int[] array = GenerateRandomArray(n, lowerBound, upperBound);
-
+        // Создание хеш-таблицы
         List<LinkedList<int>> hashTable = new List<LinkedList<int>>(M);
         for (int i = 0; i < M; i++)
         {
             hashTable.Add(new LinkedList<int>());
         }
 
-        // Заполнение хеш-таблицы
-        foreach (var item in array)
-        {
-            int hashIndex = HashFunction(item, M);
-            hashTable[hashIndex].AddLast(item);
-        }
+        Console.WriteLine("Выберите способ ввода данных:");
+        Console.WriteLine("1. Ввод вручную");
+        Console.WriteLine("2. Автоматический ввод");
+        string choice = Console.ReadLine();
 
-        // Вывод исходного массива
-        Console.WriteLine("Исходный массив:");
-        Console.WriteLine(string.Join(", ", array));
+        if (choice == "1")
+        {
+            // Ввод вручную
+            for (int i = 0; i < n; i++)
+            {
+                Console.WriteLine($"Введите элемент {i + 1} (в диапазоне {lowerBound}-{upperBound}):");
+                int inputValue;
+                while (!int.TryParse(Console.ReadLine(), out inputValue) || inputValue < lowerBound || inputValue > upperBound)
+                {
+                    Console.WriteLine($"Ошибка: введите целое число в диапазоне {lowerBound}-{upperBound}.");
+                }
+                // Добавление элемента в хеш-таблицу
+                int hashIndex = HashFunction(inputValue, M);
+                hashTable[hashIndex].AddLast(inputValue);
+            }
+        }
+        else if (choice == "2")
+        {
+            // Автоматический ввод
+            for (int i = 0; i < n; i++)
+            {
+                int randomValue = GenerateRandomNumber(lowerBound, upperBound);
+                // Добавление элемента в хеш-таблицу
+                int hashIndex = HashFunction(randomValue, M);
+                hashTable[hashIndex].AddLast(randomValue);
+            }
+            Console.WriteLine("Элементы массива сгенерированы автоматически и добавлены в хеш-таблицу.");
+        }
+        else
+        {
+            Console.WriteLine("Ошибка: неверный выбор.");
+            return;
+        }
 
         // Вывод хеш-таблицы
         Console.WriteLine("Хеш-таблица:");
@@ -45,7 +70,11 @@ class Program
 
         // Поиск элемента в хеш-таблице
         Console.WriteLine("Введите элемент для поиска в хеш-таблице:");
-        int searchElement = int.Parse(Console.ReadLine());
+        int searchElement;
+        while (!int.TryParse(Console.ReadLine(), out searchElement))
+        {
+            Console.WriteLine("Ошибка: введите целое число для поиска.");
+        }
 
         int searchIndex = HashFunction(searchElement, M);
         bool found = hashTable[searchIndex].Contains(searchElement);
@@ -60,21 +89,16 @@ class Program
         }
     }
 
-    // Функция генерации массива из n случайных чисел в заданном диапазоне
-    static int[] GenerateRandomArray(int n, int lowerBound, int upperBound)
-    {
-        int[] array = new int[n];
-        Random random = new Random();
-        for (int i = 0; i < n; i++)
-        {
-            array[i] = random.Next(lowerBound, upperBound + 1);
-        }
-        return array;
-    }
-
-    // Простая хеш-функция для деления по модулю
+    // Хеш-функция для деления по модулю
     static int HashFunction(int key, int M)
     {
         return key % M;
+    }
+
+    // Функция генерации случайного числа в заданном диапазоне
+    static int GenerateRandomNumber(int lowerBound, int upperBound)
+    {
+        Random random = new Random();
+        return random.Next(lowerBound, upperBound + 1);
     }
 }
