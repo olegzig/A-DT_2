@@ -24,6 +24,7 @@ class Program
 
         if (choice == "1")
         {
+            List<int> arr = new List<int>();
             // Ввод вручную
             for (int i = 0; i < n; i++)
             {
@@ -33,22 +34,31 @@ class Program
                 {
                     Console.WriteLine($"Ошибка: введите целое число в диапазоне {lowerBound}-{upperBound}.");
                 }
-                // Добавление элемента в хеш-таблицу
+                arr.Add(inputValue);
                 int hashIndex = HashFunction(inputValue, M);
                 hashTable[hashIndex].AddLast(inputValue);
             }
+            //выводим массив
+            Console.Write("Заполняем следующими значениями: ");
+            foreach (var number in arr)
+            {
+                Console.Write(number + " ");
+            }
+            Console.WriteLine();
         }
         else if (choice == "2")
         {
             // Автоматический ввод
+            Console.Write("Заполняем следующими значениями: ");
             for (int i = 0; i < n; i++)
             {
                 int randomValue = GenerateRandomNumber(lowerBound, upperBound);
-                // Добавление элемента в хеш-таблицу
+                //Для вывода массива
+                Console.Write(randomValue + " ");
                 int hashIndex = HashFunction(randomValue, M);
                 hashTable[hashIndex].AddLast(randomValue);
             }
-            Console.WriteLine("Элементы массива сгенерированы автоматически и добавлены в хеш-таблицу.");
+            Console.WriteLine();
         }
         else
         {
@@ -92,7 +102,7 @@ class Program
         Console.ResetColor();
     }
 
-    // Хеш-функция для деления по модулю
+    // Хеш-функция
     static int HashFunction(int key, int M)
     {
         return key % M;
