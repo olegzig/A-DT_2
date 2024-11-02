@@ -376,6 +376,35 @@ class BTree
             }
         }
     }
+
+    // Метод поиска ключа в B-дереве
+    public bool Search(int key)
+    {
+        return Search(_root, key);
+    }
+
+    private bool Search(BTreeNode node, int key)
+    {
+        if (node == null) return false;
+
+        int i = 0;
+        while (i < node.KeyCount && key > node.Keys[i])
+        {
+            i++;
+        }
+
+        if (i < node.KeyCount && node.Keys[i] == key)
+        {
+            return true; // Ключ найден
+        }
+
+        if (node.IsLeaf)
+        {
+            return false; // Ключ не найден
+        }
+
+        return Search(node.Children[i], key); // Продолжаем поиск в дочернем узле
+    }
 }
 
 class Program
@@ -403,6 +432,10 @@ class Program
             try
             {
                 numbers = Array.ConvertAll(input.Split(' '), int.Parse);
+                if(numbers.Length < 10 || numbers.Length > 15)
+                {
+                    throw new Exception("Ошибка: пожалуйста, введите от 10 до 15 целых чисел");
+                }
                 foreach (var number in numbers)
                 {
                     bTree.Insert(number);
@@ -410,14 +443,36 @@ class Program
             }
             catch (FormatException)
             {
+                Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("Ошибка: неверный формат ввода. Пожалуйста, введите целые числа.");
                 return;
+            }
+            catch (Exception e)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(e.Message);
+                return;
+            }
+            finally
+            {
+                Console.ResetColor();
             }
         }
 
         Console.WriteLine("Содержимое B-дерева:");
         bTree.Display();
         Console.WriteLine();
+
+        Console.WriteLine("Введите число для поиска в B-дереве:");
+        if (int.TryParse(Console.ReadLine(), out int searchKey))
+        {
+            bool found = bTree.Search(searchKey);
+            Console.WriteLine(found ? $"Ключ {searchKey} найден в B-дереве." : $"Ключ {searchKey} не найден в B-дереве.");
+        }
+        else
+        {
+            Console.WriteLine("Ошибка: неверный ввод.");
+        }
 
         Console.WriteLine("Введите число для удаления из B-дерева:");
         if (int.TryParse(Console.ReadLine(), out int deleteKey))
