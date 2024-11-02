@@ -150,14 +150,25 @@ class Program
 {
     static void Main(string[] args)
     {
-        BTree bTree = new BTree(4); // Степень B-дерева
+        BTree bTree = new BTree(5);
 
-        bTree.Insert(10);
-        bTree.Insert(20);
-        bTree.Insert(5);
-        bTree.Insert(6);
-        bTree.Insert(12);
-        bTree.Insert(30);
+        Console.WriteLine("Введите 10 целых чисел:");
+
+        for (int i = 0; i < 10; i++)
+        {
+            Console.Write($"Число {i + 1}: ");
+            string input = Console.ReadLine();
+
+            if (int.TryParse(input, out int number))
+            {
+                bTree.Insert(number);
+            }
+            else
+            {
+                Console.WriteLine("Некорректный ввод, пожалуйста, введите целое число.");
+                i--;
+            }
+        }
 
         Console.Write("Обход B-дерева в порядке возрастания: ");
         bTree.Traverse();
