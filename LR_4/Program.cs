@@ -944,40 +944,135 @@ namespace CodeExMachina
     {
         static void Main(string[] args)
         {
-            // Создаем экземпляр B-дерева порядка 5 (как указано)
-            var comparer = new IntComparer();
-            var btree = new BTree<Int>(5, comparer);
+            BTree<Int> btree = new BTree<Int>(5, new IntComparer()); // создаем B-дерево порядка 5
+            bool exit = false;
 
-            // Вставляем элементы в дерево
-            Console.WriteLine("Добавляем элементы 10, 20, 5, 6, 12, 30, 7, 17");
-            btree.ReplaceOrInsert(new Int(10));
-            btree.ReplaceOrInsert(new Int(20));
-            btree.ReplaceOrInsert(new Int(5));
-            btree.ReplaceOrInsert(new Int(6));
-            btree.ReplaceOrInsert(new Int(12));
-            btree.ReplaceOrInsert(new Int(30));
-            btree.ReplaceOrInsert(new Int(7));
-            btree.ReplaceOrInsert(new Int(17));
-
-            // Проверяем, существует ли элемент 12
-            var has12 = btree.Has(new Int(12));
-            Console.WriteLine($"Элемент 12 в дереве? {(has12 ? "Да" : "Нет")}");
-
-            // Удаляем элемент 12
-            Console.WriteLine("Удаляем элемент 12...");
-            btree.Delete(new Int(12));
-
-            // Проверяем, существует ли элемент 12 после удаления
-            has12 = btree.Has(new Int(12));
-            Console.WriteLine($"Элемент 12 в дереве? {(has12 ? "Да" : "Нет")}");
-
-            // Печать дерева
-            Console.WriteLine("Содержимое дерева:");
-            btree.Ascend(item =>
+            while (!exit)
             {
-                Console.WriteLine(item);
-                return true;
+                Console.Clear();
+                Console.WriteLine("Меню операций с B-деревом:");
+                Console.WriteLine("1) Добавить элемент");
+                Console.WriteLine("2) Удалить элемент");
+                Console.WriteLine("3) Найти элемент");
+                Console.WriteLine("4) Показать все элементы по возрастанию");
+                Console.WriteLine("5) Автоматический ввод нескольких элементов");
+                Console.WriteLine("0) Выход");
+
+                Console.Write("Выберите действие: ");
+                if (!int.TryParse(Console.ReadLine(), out int choice))
+                {
+                    Console.WriteLine("Ошибка: Введите корректный номер операции.");
+                    Console.ReadKey();
+                    continue;
+                }
+
+                switch (choice)
+                {
+                    case 1:
+                        AddElement(btree);
+                        break;
+                    case 2:
+                        RemoveElement(btree);
+                        break;
+                    case 3:
+                        FindElement(btree);
+                        break;
+                    case 4:
+                        ShowAllElements(btree);
+                        break;
+                    case 5:
+                        AutoInsertElements(btree);
+                        break;
+                    case 0:
+                        exit = true;
+                        break;
+                    default:
+                        Console.WriteLine("Ошибка: выберите номер операции из списка.");
+                        Console.ReadKey();
+                        break;
+                }
+            }
+        }
+
+        static void AddElement(BTree<Int> btree)
+        {
+            Console.Write("Введите значение для добавления: ");
+            if (int.TryParse(Console.ReadLine(), out int value))
+            {
+                btree.ReplaceOrInsert(new Int(value));
+                Console.WriteLine($"Элемент {value} добавлен.");
+            }
+            else
+            {
+                Console.WriteLine("Ошибка: введите корректное целое число.");
+            }
+            Console.ReadKey();
+        }
+
+        static void RemoveElement(BTree<Int> btree)
+        {
+            Console.Write("Введите значение для удаления: ");
+            if (int.TryParse(Console.ReadLine(), out int value))
+            {
+                var removed = btree.Delete(new Int(value));
+                if (removed != null)
+                {
+                    Console.WriteLine($"Элемент {value} удален.");
+                }
+                else
+                {
+                    Console.WriteLine($"Элемент {value} не найден в дереве.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Ошибка: введите корректное целое число.");
+            }
+            Console.ReadKey();
+        }
+
+        static void FindElement(BTree<Int> btree)
+        {
+            Console.Write("Введите значение для поиска: ");
+            if (int.TryParse(Console.ReadLine(), out int value))
+            {
+                var found = btree.Get(new Int(value));
+                if (found != null)
+                {
+                    Console.WriteLine($"Элемент {value} найден.");
+                }
+                else
+                {
+                    Console.WriteLine($"Элемент {value} не найден в дереве.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Ошибка: введите корректное целое число.");
+            }
+            Console.ReadKey();
+        }
+
+        static void ShowAllElements(BTree<Int> btree)
+        {
+            Console.WriteLine("Элементы дерева по возрастанию:");
+            btree.Ascend(item => {
+                Console.Write($"{item} ");
+                return true; // возвращаем true, чтобы продолжить обход
             });
+            Console.WriteLine();
+            Console.ReadKey();
+        }
+
+        static void AutoInsertElements(BTree<Int> btree)
+        {
+            int[] values = { 15, 10, 20, 5, 13, 17, 25 };
+            foreach (var value in values)
+            {
+                btree.ReplaceOrInsert(new Int(value));
+            }
+            Console.WriteLine("Элементы [15, 10, 20, 5, 13, 17, 25] добавлены автоматически.");
+            Console.ReadKey();
         }
     }
 }
