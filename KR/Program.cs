@@ -45,62 +45,73 @@ class HashSegment
 
 class FileHashTable
 {
-    private readonly string _filePath;
+    private readonly string _filePath; // Основной файл для данных
+    private readonly string _segmentFilePath; // Файл для таблицы сегментов
     private readonly int _segmentCount;
-    private readonly int _blockSize; // Размер блока (максимальное число записей в одном блоке)
-    private Dictionary<int, long> _segmentTable; // Таблица сегментов (номер -> позиция в файле)
+    private readonly int _blockSize; // Размер блока (максимальное количество записей)
+    private long[] _segmentTable; // Таблица сегментов
 
-    public FileHashTable(string filePath, int segmentCount, int blockSize)
+    public FileHashTable(string filePath, string segmentFilePath, int segmentCount, int blockSize)
     {
         _filePath = filePath;
+        _segmentFilePath = segmentFilePath;
         _segmentCount = segmentCount;
         _blockSize = blockSize;
-        _segmentTable = new Dictionary<int, long>();
-        InitializeFile();
-    }
+        _segmentTable = new long[segmentCount];
 
-    private void InitializeFile()
-    {
-        using (var writer = new BinaryWriter(File.Open(_filePath, FileMode.Create)))
-        {
-            // Инициализация пустой таблицы сегментов
-            for (int i = 0; i < _segmentCount; i++)
-            {
-                writer.Write((long)-1); // Указатель на первый блок сегмента (-1 означает "пустой сегмент")
-            }
-        }
-
-        // Загрузка таблицы сегментов в память
-        for (int i = 0; i < _segmentCount; i++)
-        {
-            _segmentTable[i] = -1;
-        }
+        // Загружаем таблицу сегментов при старте
+        LoadSegmentTable();
     }
 
     private void LoadSegmentTable()
     {
-        // Проверяем существование файла
-        if (!File.Exists(_filePath))
+        // Проверка, что файл существует и достаточно данных для чтения
+        if (!File.Exists(_segmentFilePath) || new FileInfo(_segmentFilePath).Length < _segmentCount * sizeof(long))
         {
-            throw new FileNotFoundException($"Файл {_filePath} не найден.");
+            // Если файл не существует или содержит недостаточно данных, инициализируем таблицу заново
+            InitializeSegmentTable();
+            return; // Выходим из метода, так как таблица уже инициализирована и сохранена
         }
 
-        using (var reader = new BinaryReader(File.Open(_filePath, FileMode.Open)))
+        // Файл существует и содержит достаточно данных для чтения
+        using (var reader = new BinaryReader(File.Open(_segmentFilePath, FileMode.Open)))
         {
-            // Проверяем, содержит ли файл достаточно данных для таблицы сегментов
-            long expectedSize = _segmentCount * sizeof(long); // Ожидаемый размер таблицы сегментов
-            if (reader.BaseStream.Length < expectedSize)
-            {
-                throw new InvalidDataException("Файл не содержит валидной таблицы сегментов.");
-            }
-
-            // Загружаем таблицу сегментов
             for (int i = 0; i < _segmentCount; i++)
             {
-                _segmentTable[i] = reader.ReadInt64();
+                _segmentTable[i] = reader.ReadInt64(); // Читаем каждый указатель
             }
         }
     }
+
+    // Инициализация таблицы сегментов
+    private void InitializeSegmentTable()
+    {
+        for (int i = 0; i < _segmentCount; i++)
+        {
+            _segmentTable[i] = -1; // Указатель на пустой сегмент
+        }
+        SaveSegmentTable(); // Сохраняем таблицу в файл
+    }
+
+    // Сохранение таблицы сегментов в файл
+    private void SaveSegmentTable()
+    {
+        try
+        {
+            using (var writer = new BinaryWriter(File.Open(_segmentFilePath, FileMode.Create)))
+            {
+                for (int i = 0; i < _segmentCount; i++)
+                {
+                    writer.Write(_segmentTable[i]); // Записываем каждый указатель
+                }
+            }
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"Ошибка при сохранении таблицы сегментов: {ex.Message}");
+        }
+    }
+
 
     private int HashFunction(string key)
     {
@@ -152,7 +163,7 @@ class FileHashTable
         int segmentIndex = HashFunction(key);
         long blockPointer = _segmentTable[segmentIndex];
 
-        using (var stream = File.Open(_filePath, FileMode.OpenOrCreate))
+        using (var stream = new FileStream(_filePath, FileMode.OpenOrCreate))
         using (var reader = new BinaryReader(stream))
         using (var writer = new BinaryWriter(stream))
         {
@@ -164,13 +175,13 @@ class FileHashTable
 
                 if (recordCount < _blockSize)
                 {
-                    // Запись строки и флага удаления
-                    writer.Write(key);  // Записываем строку ключа
-                    writer.Write(value);  // Записываем строку значения
-                    writer.Write(false); // Записываем флаг удаления
+                    stream.Seek(blockPointer + sizeof(int) + sizeof(long) + (recordCount * (key.Length + value.Length + sizeof(bool))), SeekOrigin.Begin);
+                    writer.Write(key);
+                    writer.Write(value);
+                    writer.Write(false); // Флаг "не удалено"
 
                     stream.Seek(blockPointer, SeekOrigin.Begin);
-                    writer.Write(recordCount + 1);  // Увеличиваем количество записей в блоке
+                    writer.Write(recordCount + 1); // Обновляем количество записей
                     return;
                 }
 
@@ -182,6 +193,7 @@ class FileHashTable
             if (_segmentTable[segmentIndex] == -1)
             {
                 _segmentTable[segmentIndex] = newBlockPointer; // Обновляем указатель на первый блок
+                SaveSegmentTable();
             }
 
             stream.Seek(newBlockPointer, SeekOrigin.Begin);
@@ -192,6 +204,7 @@ class FileHashTable
             writer.Write(false); // Флаг удаления
         }
     }
+
 
 
 
@@ -240,7 +253,8 @@ class Program
     static void Main(string[] args)
     {
         string filePath = "dictionary.bin";
-        var dictionary = new FileHashTable(filePath, segmentCount: 10, blockSize: 4);
+        string segmentFilePath = "segmentFile.bin";
+        var dictionary = new FileHashTable(filePath: filePath, segmentFilePath: segmentFilePath, segmentCount: 10,  blockSize: 4);
 
         while (true)
         {
