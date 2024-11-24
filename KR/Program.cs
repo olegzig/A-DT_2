@@ -123,40 +123,42 @@ class FileHashTable
         int segmentIndex = HashFunction(key);
         long blockPointer = _segmentTable[segmentIndex];
 
-        using (var reader = new BinaryReader(File.Open(_filePath, FileMode.Open)))
+        using (var reader = new BinaryReader(File.Open(_filePath, FileMode.Open, FileAccess.Read)))
         {
             while (blockPointer != -1)
             {
                 reader.BaseStream.Seek(blockPointer, SeekOrigin.Begin);
-                int recordCount = reader.ReadInt32();  // Читаем количество записей в блоке
-                long nextBlockPointer = reader.ReadInt64(); // Указатель на следующий блок
+                if (reader.BaseStream.Position + sizeof(int) + sizeof(long) > reader.BaseStream.Length)
+                {
+                    throw new EndOfStreamException("Недостаточно данных для чтения записи.");
+                }
+
+                int recordCount = reader.ReadInt32();
+                long nextBlockPointer = reader.ReadInt64();
 
                 for (int i = 0; i < recordCount; i++)
                 {
-                    // Проверяем, можно ли безопасно считать строку
-                    if (reader.BaseStream.Position + 2 > reader.BaseStream.Length)  // 2 байта для минимальной длины строки (по 1 байту на символ)
+                    if (reader.BaseStream.Position + sizeof(int) + sizeof(long) > reader.BaseStream.Length)
                     {
-                        throw new EndOfStreamException("Недостаточно данных для чтения строки.");
+                        throw new EndOfStreamException("Недостаточно данных для чтения ключа.");
                     }
 
-                    string storedKey = reader.ReadString();  // Читаем строку (ключ)
-                    string value = reader.ReadString();      // Читаем строку (значение)
-                    bool isDeleted = reader.ReadBoolean();   // Читаем флаг удаления
+                    string storedKey = reader.ReadString();
+                    string value = reader.ReadString();
+                    bool isDeleted = reader.ReadBoolean();
 
                     if (storedKey == key && !isDeleted)
                     {
-                        return value;  // Если нашли нужный ключ, возвращаем значение
+                        return value;
                     }
                 }
 
-                blockPointer = nextBlockPointer; // Переходим к следующему блоку
+                blockPointer = nextBlockPointer;
             }
         }
 
-        return null;  // Если ключ не найден
+        return null;
     }
-
-
 
     public void Insert(string key, string value)
     {
@@ -213,7 +215,7 @@ class FileHashTable
         int segmentIndex = HashFunction(key);
         long blockPointer = _segmentTable[segmentIndex];
 
-        using (var stream = File.Open(_filePath, FileMode.Open))
+        using (var stream = File.Open(_filePath, FileMode.Open, FileAccess.ReadWrite))
         using (var reader = new BinaryReader(stream))
         using (var writer = new BinaryWriter(stream))
         {
@@ -233,7 +235,9 @@ class FileHashTable
                     if (storedKey == key && !isDeleted)
                     {
                         // Помечаем запись как удаленную
-                        stream.Seek(recordPosition + storedKey.Length + value.Length + 1, SeekOrigin.Begin);
+                        stream.Seek(recordPosition, SeekOrigin.Begin);
+                        writer.Write(storedKey);
+                        writer.Write(value);
                         writer.Write(true); // Устанавливаем флаг удаления
                         Console.WriteLine($"Ключ '{key}' успешно удален.");
                         return;
@@ -245,6 +249,82 @@ class FileHashTable
         }
 
         Console.WriteLine($"Ключ '{key}' не найден.");
+    }
+    public void Compact()
+    {
+        string tempFilePath = _filePath + ".tmp";
+
+        using (var stream = File.Open(_filePath, FileMode.Open))
+        using (var tempStream = File.Open(tempFilePath, FileMode.Create))
+        using (var reader = new BinaryReader(stream))
+        using (var writer = new BinaryWriter(tempStream))
+        {
+            foreach (long blockPointer in _segmentTable)
+            {
+                if (blockPointer == -1)
+                    continue;
+
+                stream.Seek(blockPointer, SeekOrigin.Begin);
+                if (reader.BaseStream.Position + sizeof(int) + sizeof(long) > reader.BaseStream.Length)
+                {
+                    Console.WriteLine("Недостаточно данных для чтения заголовка блока.");
+                    continue;
+                }
+
+                int recordCount = reader.ReadInt32();
+                long nextBlockPointer = reader.ReadInt64();
+
+                Console.WriteLine($"BlockPointer: {blockPointer}, RecordCount: {recordCount}, NextBlockPointer: {nextBlockPointer}");
+
+                // Временная структура для хранения актуальных записей блока
+                var entries = new List<DictionaryEntry>();
+
+                for (int i = 0; i < recordCount; i++)
+                {
+                    if (reader.BaseStream.Position + sizeof(int) + sizeof(long) > reader.BaseStream.Length)
+                    {
+                        Console.WriteLine("Недостаточно данных для чтения записи.");
+                        break; // Выходим из цикла, если недостаточно данных для чтения
+                    }
+
+                    string key = reader.ReadString();
+                    string value = reader.ReadString();
+                    bool isDeleted = reader.ReadBoolean();
+
+                    Console.WriteLine($"Key: {key}, Value: {value}, IsDeleted: {isDeleted}");
+
+                    if (!isDeleted)
+                    {
+                        entries.Add(new DictionaryEntry { Key = key, Value = value, IsDeleted = false });
+                    }
+                }
+
+                // Записываем только актуальные записи в новый файл
+                if (entries.Count > 0)
+                {
+                    long newBlockPointer = tempStream.Position;
+                    writer.Write(entries.Count);
+                    writer.Write((long)-1);
+
+                    foreach (var entry in entries)
+                    {
+                        writer.Write(entry.Key);
+                        writer.Write(entry.Value);
+                        writer.Write(entry.IsDeleted);
+                    }
+
+                    Console.WriteLine($"Новый блок записан: {newBlockPointer}, Записей: {entries.Count}");
+
+                    // Обновляем указатель в таблице сегментов
+                    _segmentTable[Array.IndexOf(_segmentTable, blockPointer)] = newBlockPointer;
+                }
+            }
+        }
+
+        // Обновляем файл сегментов и заменяем старый файл новым
+        SaveSegmentTable();
+        File.Delete(_filePath);
+        File.Move(tempFilePath, _filePath);
     }
 }
 
@@ -280,6 +360,7 @@ class Program
                     dictionary.Delete(deleteKey);
                     break;
                 case "0":
+                    dictionary.Compact();
                     return;
                 default:
                     Console.WriteLine("Некорректный ввод.");
