@@ -117,24 +117,35 @@ class FileHashTable
             while (blockPointer != -1)
             {
                 reader.BaseStream.Seek(blockPointer, SeekOrigin.Begin);
-                int recordCount = reader.ReadInt32(); // Число записей в блоке
+                int recordCount = reader.ReadInt32();  // Читаем количество записей в блоке
+                long nextBlockPointer = reader.ReadInt64(); // Указатель на следующий блок
 
                 for (int i = 0; i < recordCount; i++)
                 {
-                    string storedKey = reader.ReadString();
-                    string value = reader.ReadString();
-                    bool isDeleted = reader.ReadBoolean();
+                    // Проверяем, можно ли безопасно считать строку
+                    if (reader.BaseStream.Position + 2 > reader.BaseStream.Length)  // 2 байта для минимальной длины строки (по 1 байту на символ)
+                    {
+                        throw new EndOfStreamException("Недостаточно данных для чтения строки.");
+                    }
+
+                    string storedKey = reader.ReadString();  // Читаем строку (ключ)
+                    string value = reader.ReadString();      // Читаем строку (значение)
+                    bool isDeleted = reader.ReadBoolean();   // Читаем флаг удаления
 
                     if (storedKey == key && !isDeleted)
-                        return value;
+                    {
+                        return value;  // Если нашли нужный ключ, возвращаем значение
+                    }
                 }
 
-                blockPointer = reader.ReadInt64(); // Указатель на следующий блок
+                blockPointer = nextBlockPointer; // Переходим к следующему блоку
             }
         }
 
-        return null; // Ключ не найден
+        return null;  // Если ключ не найден
     }
+
+
 
     public void Insert(string key, string value)
     {
@@ -147,38 +158,30 @@ class FileHashTable
         {
             while (blockPointer != -1)
             {
-                if (blockPointer < 0 || blockPointer >= stream.Length)
-                {
-                    throw new IOException($"Неверное значение blockPointer: {blockPointer}. Файл имеет длину {stream.Length} байт.");
-                }
-
                 stream.Seek(blockPointer, SeekOrigin.Begin);
                 int recordCount = reader.ReadInt32();
                 long nextBlockPointer = reader.ReadInt64();
 
                 if (recordCount < _blockSize)
                 {
-                    // Записываем новую запись в текущий блок
-                    stream.Seek(blockPointer + sizeof(int) + sizeof(long) + (recordCount * (key.Length + value.Length + sizeof(bool))), SeekOrigin.Begin);
-                    writer.Write(key);
-                    writer.Write(value);
-                    writer.Write(false); // Флаг "не удалено"
+                    // Запись строки и флага удаления
+                    writer.Write(key);  // Записываем строку ключа
+                    writer.Write(value);  // Записываем строку значения
+                    writer.Write(false); // Записываем флаг удаления
 
-                    // Увеличиваем счетчик записей
                     stream.Seek(blockPointer, SeekOrigin.Begin);
-                    writer.Write(recordCount + 1);
+                    writer.Write(recordCount + 1);  // Увеличиваем количество записей в блоке
                     return;
                 }
 
-                blockPointer = nextBlockPointer; // Переходим к следующему блоку
+                blockPointer = nextBlockPointer;
             }
 
-            // Если все блоки заполнены, создаем новый
+            // Если блоки заполнены, создаем новый блок
             long newBlockPointer = stream.Length;
-            if (blockPointer != -1)
+            if (_segmentTable[segmentIndex] == -1)
             {
-                stream.Seek(blockPointer, SeekOrigin.Begin);
-                writer.Write(newBlockPointer);
+                _segmentTable[segmentIndex] = newBlockPointer; // Обновляем указатель на первый блок
             }
 
             stream.Seek(newBlockPointer, SeekOrigin.Begin);
@@ -186,9 +189,11 @@ class FileHashTable
             writer.Write((long)-1); // Следующего блока нет
             writer.Write(key);
             writer.Write(value);
-            writer.Write(false); // Флаг "не удалено"
+            writer.Write(false); // Флаг удаления
         }
     }
+
+
 
     public void Delete(string key)
     {
