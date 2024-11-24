@@ -7,84 +7,122 @@ class DictionaryEntry
 {
     public string Key { get; set; }
     public string Value { get; set; }
+    public bool IsDeleted { get; set; } // Указывает, удалена ли запись
 
-    public DictionaryEntry(string key, string value)
+    public override string ToString() => $"{Key}:{Value}:{(IsDeleted ? "1" : "0")}";
+}
+
+class HashSegment
+{
+    public List<DictionaryEntry> Entries { get; private set; } = new List<DictionaryEntry>();
+
+    public void AddEntry(DictionaryEntry entry)
     {
-        Key = key;
-        Value = value;
+        Entries.Add(entry);
+    }
+
+    public DictionaryEntry FindEntry(string key)
+    {
+        return Entries.Find(e => e.Key == key && !e.IsDeleted);
+    }
+
+    public bool RemoveEntry(string key)
+    {
+        var entry = FindEntry(key);
+        if (entry != null)
+        {
+            entry.IsDeleted = true;
+            return true;
+        }
+        return false;
+    }
+
+    public override string ToString()
+    {
+        return string.Join(Environment.NewLine, Entries);
     }
 }
 
-class HashFileDictionary
+class FileHashTable
 {
-    private const string FileName = "dictionary.dat";
-    private const int TableSize = 100; // Размер хеш-таблицы
-    private List<DictionaryEntry>[] table;
+    private readonly string _filePath;
+    private readonly int _segmentCount;
+    private List<HashSegment> _segments;
 
-    public HashFileDictionary()
+    public FileHashTable(string filePath, int segmentCount)
     {
-        table = new List<DictionaryEntry>[TableSize];
-        for (int i = 0; i < TableSize; i++)
-            table[i] = new List<DictionaryEntry>();
-        LoadFromFile();
+        _filePath = filePath;
+        _segmentCount = segmentCount;
+        _segments = new List<HashSegment>(segmentCount);
+
+        for (int i = 0; i < segmentCount; i++)
+        {
+            _segments.Add(new HashSegment());
+        }
     }
 
-    private int Hash(string key)
+    private int HashFunction(string key)
     {
-        return Math.Abs(key.GetHashCode()) % TableSize;
+        return Math.Abs(key.GetHashCode()) % _segmentCount;
     }
 
     public void Insert(string key, string value)
     {
-        int index = Hash(key);
-        var entry = new DictionaryEntry(key, value);
-        table[index].Add(entry);
+        int segmentIndex = HashFunction(key);
+        var entry = new DictionaryEntry { Key = key, Value = value, IsDeleted = false };
+        _segments[segmentIndex].AddEntry(entry);
         SaveToFile();
     }
 
     public string Search(string key)
     {
-        int index = Hash(key);
-        var entry = table[index].FirstOrDefault(e => e.Key == key);
-        return entry?.Value ?? "Не найдено";
+        int segmentIndex = HashFunction(key);
+        var entry = _segments[segmentIndex].FindEntry(key);
+        return entry != null ? entry.Value : null;
     }
 
-    public void Delete(string key)
+    public bool Delete(string key)
     {
-        int index = Hash(key);
-        var entry = table[index].FirstOrDefault(e => e.Key == key);
-        if (entry != null)
-        {
-            table[index].Remove(entry);
-            SaveToFile();
-        }
+        int segmentIndex = HashFunction(key);
+        bool result = _segments[segmentIndex].RemoveEntry(key);
+        SaveToFile();
+        return result;
     }
 
-    private void LoadFromFile()
+    public void SaveToFile()
     {
-        if (File.Exists(FileName))
+        using (var writer = new StreamWriter(_filePath))
         {
-            foreach (var line in File.ReadAllLines(FileName))
+            foreach (var segment in _segments)
             {
-                var parts = line.Split('|');
-                if (parts.Length == 2)
-                {
-                    Insert(parts[0], parts[1]);
-                }
+                writer.WriteLine(segment.ToString());
             }
         }
     }
 
-    private void SaveToFile()
+    public void LoadFromFile()
     {
-        using (var writer = new StreamWriter(FileName))
+        if (!File.Exists(_filePath)) return;
+
+        using (var reader = new StreamReader(_filePath))
         {
-            foreach (var bucket in table)
+            _segments = new List<HashSegment>(_segmentCount);
+
+            for (int i = 0; i < _segmentCount; i++)
             {
-                foreach (var entry in bucket)
+                var segment = new HashSegment();
+                string line;
+                while (!string.IsNullOrEmpty(line = reader.ReadLine()))
                 {
-                    writer.WriteLine($"{entry.Key}|{entry.Value}");
+                    var parts = line.Split(':');
+                    segment.AddEntry(new DictionaryEntry
+                    {
+                        Key = parts[0],
+                        Value = parts[1],
+                        IsDeleted = parts[2] == "1"
+                    });
                 }
+                _segments.Add(segment);
             }
         }
     }
@@ -94,7 +132,8 @@ class Program
 {
     static void Main(string[] args)
     {
-        var dictionary = new HashFileDictionary();
+        string filePath = "dictionary.txt";
+        var dictionary = new FileHashTable(filePath, 10);
 
         while (true)
         {
@@ -117,7 +156,7 @@ class Program
                 case "3":
                     Console.Write("Введите ключ для удаления: ");
                     string deleteKey = Console.ReadLine();
-                    dictionary.Delete(deleteKey);
+                    Console.WriteLine("Удаление " + (dictionary.Delete(deleteKey) ? "Успешно" : "Неудачно"));
                     break;
                 case "0":
                     return;
