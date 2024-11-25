@@ -54,12 +54,24 @@ class HashTableDictionary
 
     public void Insert(string key, string value)
     {
-        var hashTable = LoadFromFile<Dictionary<string, List<string>>>(HashTableFile);
-        var dictionary = LoadFromFile<Dictionary<string, List<Dictionary<string, string>>>>(DictionaryFile);
+        // Загрузка счастья
+        var hashTable = File.Exists(HashTableFile) && new FileInfo(HashTableFile).Length > 0
+            ? LoadFromFile<Dictionary<string, List<string>>>(HashTableFile)
+            : new Dictionary<string, List<string>>(HashTableSize);
+
+        var dictionary = File.Exists(DictionaryFile) && new FileInfo(DictionaryFile).Length > 0
+            ? LoadFromFile<Dictionary<string, List<Dictionary<string, string>>>>(DictionaryFile)
+            : new Dictionary<string, List<Dictionary<string, string>>>();
 
         string hashIndex = HashFunction(key).ToString();
+        if (!hashTable.ContainsKey(hashIndex))
+        {
+            hashTable[hashIndex] = new List<string>();
+        }
 
-        foreach (string blockId in hashTable[hashIndex])
+        // Работа с блоками
+        var blocks = hashTable[hashIndex];
+        foreach (string blockId in blocks)
         {
             var block = dictionary[blockId];
             if (block.Count < BlockCapacity)
@@ -71,17 +83,19 @@ class HashTableDictionary
             }
         }
 
-        // Создаём новый блок
+        // Создание нового блока, если все существующие переполнены
         string newBlockId = $"block_{dictionary.Count + 1}";
         dictionary[newBlockId] = new List<Dictionary<string, string>>
-        {
-            new Dictionary<string, string> { { "key", key }, { "value", value } }
-        };
+    {
+        new Dictionary<string, string> { { "key", key }, { "value", value } }
+    };
         hashTable[hashIndex].Add(newBlockId);
 
+        // Сохранение данных
         SaveToFile(DictionaryFile, dictionary);
         SaveToFile(HashTableFile, hashTable);
     }
+
 
     public string Search(string key)
     {
@@ -90,14 +104,17 @@ class HashTableDictionary
 
         string hashIndex = HashFunction(key).ToString();
 
-        foreach (string blockId in hashTable[hashIndex])
+        if (hashTable.ContainsKey(hashIndex))
         {
-            var block = dictionary[blockId];
-            foreach (var entry in block)
+            foreach (string blockId in hashTable[hashIndex])
             {
-                if (entry["key"] == key)
+                var block = dictionary[blockId];
+                foreach (var entry in block)
                 {
-                    return entry["value"];
+                    if (entry["key"] == key)
+                    {
+                        return entry["value"];
+                    }
                 }
             }
         }
@@ -112,18 +129,20 @@ class HashTableDictionary
 
         string hashIndex = HashFunction(key).ToString();
 
-        foreach (string blockId in hashTable[hashIndex])
+        for (int i = 0; i < hashTable[hashIndex].Count; i++)
         {
+            string blockId = hashTable[hashIndex][i];
             var block = dictionary[blockId];
-            for (int i = 0; i < block.Count; i++)
+
+            for (int j = 0; j < block.Count; j++)
             {
-                if (block[i]["key"] == key)
+                if (block[j]["key"] == key)
                 {
-                    block.RemoveAt(i);
+                    block.RemoveAt(j);
 
                     if (block.Count == 0)
                     {
-                        hashTable[hashIndex].Remove(blockId);
+                        hashTable[hashIndex].RemoveAt(i);
                         dictionary.Remove(blockId);
                     }
                     else
@@ -208,4 +227,3 @@ class Program
         }
     }
 }
-
