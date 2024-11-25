@@ -338,7 +338,7 @@ class Program
 
         while (true)
         {
-            Console.WriteLine("Выберите операцию: 1 - Вставка, 2 - Поиск, 3 - Удаление, 0 - Выход");
+            Console.WriteLine("Выберите операцию: 1 - Вставка, 2 - Поиск, 3 - Удаление, 4 - сжатие файла, 0 - Выход");
             var choice = Console.ReadLine();
             switch (choice)
             {
@@ -359,8 +359,10 @@ class Program
                     string deleteKey = Console.ReadLine();
                     dictionary.Delete(deleteKey);
                     break;
-                case "0":
+                case "4":
                     dictionary.Compact();
+                    break;
+                case "0":
                     return;
                 default:
                     Console.WriteLine("Некорректный ввод.");
