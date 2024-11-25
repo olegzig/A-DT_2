@@ -1,128 +1,227 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
-class DictionaryEntry
+using Newtonsoft.Json;
+
+class HashTableDictionary
 {
-    public string Key { get; set; }
-    public string Value { get; set; }
+    private const string HashTableFile = "hash_table.json";
+    private const string DictionaryFile = "dictionary.json";
+    private const int HashTableSize = 10;
+    private const int BlockCapacity = 5;
 
-    public DictionaryEntry(string key, string value)
+    public HashTableDictionary()
     {
-        Key = key;
-        Value = value;
-    }
-}
-
-class HashFileDictionary
-{
-    private const string FileName = "dictionary.dat";
-    private const int TableSize = 100; // Размер хеш-таблицы
-    private List<DictionaryEntry>[] table;
-
-    public HashFileDictionary()
-    {
-        table = new List<DictionaryEntry>[TableSize];
-        for (int i = 0; i < TableSize; i++)
-            table[i] = new List<DictionaryEntry>();
-        LoadFromFile();
+        InitializeFiles();
     }
 
-    private int Hash(string key)
+    private void InitializeFiles()
     {
-        return Math.Abs(key.GetHashCode()) % TableSize;
+        if (!File.Exists(HashTableFile))
+        {
+            var hashTable = new Dictionary<string, List<string>>();
+            for (int i = 0; i < HashTableSize; i++)
+            {
+                hashTable[i.ToString()] = new List<string>();
+            }
+            SaveToFile(HashTableFile, hashTable);
+        }
+
+        if (!File.Exists(DictionaryFile))
+        {
+            var dictionary = new Dictionary<string, List<Dictionary<string, string>>>();
+            SaveToFile(DictionaryFile, dictionary);
+        }
+    }
+
+    private int HashFunction(string key)
+    {
+        return Math.Abs(key.GetHashCode()) % HashTableSize;
+    }
+
+    private T LoadFromFile<T>(string filePath)
+    {
+        string json = File.ReadAllText(filePath);
+        return JsonConvert.DeserializeObject<T>(json);
+    }
+
+    private void SaveToFile<T>(string filePath, T data)
+    {
+        string json = JsonConvert.SerializeObject(data, Formatting.Indented);
+        File.WriteAllText(filePath, json);
     }
 
     public void Insert(string key, string value)
     {
-        int index = Hash(key);
-        var entry = new DictionaryEntry(key, value);
-        table[index].Add(entry);
-        SaveToFile();
+        // Загрузка счастья
+        var hashTable = File.Exists(HashTableFile) && new FileInfo(HashTableFile).Length > 0
+            ? LoadFromFile<Dictionary<string, List<string>>>(HashTableFile)
+            : new Dictionary<string, List<string>>(HashTableSize);
+
+        var dictionary = File.Exists(DictionaryFile) && new FileInfo(DictionaryFile).Length > 0
+            ? LoadFromFile<Dictionary<string, List<Dictionary<string, string>>>>(DictionaryFile)
+            : new Dictionary<string, List<Dictionary<string, string>>>();
+
+        string hashIndex = HashFunction(key).ToString();
+        if (!hashTable.ContainsKey(hashIndex))
+        {
+            hashTable[hashIndex] = new List<string>();
+        }
+
+        // Работа с блоками
+        var blocks = hashTable[hashIndex];
+        foreach (string blockId in blocks)
+        {
+            var block = dictionary[blockId];
+            if (block.Count < BlockCapacity)
+            {
+                block.Add(new Dictionary<string, string> { { "key", key }, { "value", value } });
+                dictionary[blockId] = block;
+                SaveToFile(DictionaryFile, dictionary);
+                return;
+            }
+        }
+
+        // Создание нового блока, если все существующие переполнены
+        string newBlockId = $"block_{dictionary.Count + 1}";
+        dictionary[newBlockId] = new List<Dictionary<string, string>>
+    {
+        new Dictionary<string, string> { { "key", key }, { "value", value } }
+    };
+        hashTable[hashIndex].Add(newBlockId);
+
+        // Сохранение данных
+        SaveToFile(DictionaryFile, dictionary);
+        SaveToFile(HashTableFile, hashTable);
     }
+
 
     public string Search(string key)
     {
-        int index = Hash(key);
-        var entry = table[index].FirstOrDefault(e => e.Key == key);
-        return entry?.Value ?? "Не найдено";
-    }
+        var hashTable = LoadFromFile<Dictionary<string, List<string>>>(HashTableFile);
+        var dictionary = LoadFromFile<Dictionary<string, List<Dictionary<string, string>>>>(DictionaryFile);
 
-    public void Delete(string key)
-    {
-        int index = Hash(key);
-        var entry = table[index].FirstOrDefault(e => e.Key == key);
-        if (entry != null)
-        {
-            table[index].Remove(entry);
-            SaveToFile();
-        }
-    }
+        string hashIndex = HashFunction(key).ToString();
 
-    private void LoadFromFile()
-    {
-        if (File.Exists(FileName))
+        if (hashTable.ContainsKey(hashIndex))
         {
-            foreach (var line in File.ReadAllLines(FileName))
+            foreach (string blockId in hashTable[hashIndex])
             {
-                var parts = line.Split('|');
-                if (parts.Length == 2)
+                var block = dictionary[blockId];
+                foreach (var entry in block)
                 {
-                    Insert(parts[0], parts[1]);
+                    if (entry["key"] == key)
+                    {
+                        return entry["value"];
+                    }
                 }
             }
         }
+
+        return null;
     }
 
-    private void SaveToFile()
+    public bool Delete(string key)
     {
-        using (var writer = new StreamWriter(FileName))
+        var hashTable = LoadFromFile<Dictionary<string, List<string>>>(HashTableFile);
+        var dictionary = LoadFromFile<Dictionary<string, List<Dictionary<string, string>>>>(DictionaryFile);
+
+        string hashIndex = HashFunction(key).ToString();
+
+        for (int i = 0; i < hashTable[hashIndex].Count; i++)
         {
-            foreach (var bucket in table)
+            string blockId = hashTable[hashIndex][i];
+            var block = dictionary[blockId];
+
+            for (int j = 0; j < block.Count; j++)
             {
-                foreach (var entry in bucket)
+                if (block[j]["key"] == key)
                 {
-                    writer.WriteLine($"{entry.Key}|{entry.Value}");
+                    block.RemoveAt(j);
+
+                    if (block.Count == 0)
+                    {
+                        hashTable[hashIndex].RemoveAt(i);
+                        dictionary.Remove(blockId);
+                    }
+                    else
+                    {
+                        dictionary[blockId] = block;
+                    }
+
+                    SaveToFile(DictionaryFile, dictionary);
+                    SaveToFile(HashTableFile, hashTable);
+                    return true;
                 }
             }
         }
+
+        return false;
     }
 }
 
 class Program
 {
-    static void Main(string[] args)
+    static void Main()
     {
-        var dictionary = new HashFileDictionary();
+        var hashTableDict = new HashTableDictionary();
 
         while (true)
         {
-            Console.WriteLine("Выберите операцию: 1 - Вставка, 2 - Поиск, 3 - Удаление, 0 - Выход");
-            var choice = Console.ReadLine();
+            Console.WriteLine("\n--- Меню ---");
+            Console.WriteLine("1. Вставить элемент");
+            Console.WriteLine("2. Найти элемент");
+            Console.WriteLine("3. Удалить элемент");
+            Console.WriteLine("4. Выйти");
+            Console.Write("Выберите действие: ");
+
+            string choice = Console.ReadLine();
             switch (choice)
             {
                 case "1":
                     Console.Write("Введите ключ: ");
-                    string insertKey = Console.ReadLine();
+                    string keyToInsert = Console.ReadLine();
                     Console.Write("Введите значение: ");
-                    string insertValue = Console.ReadLine();
-                    dictionary.Insert(insertKey, insertValue);
+                    string valueToInsert = Console.ReadLine();
+                    hashTableDict.Insert(keyToInsert, valueToInsert);
+                    Console.WriteLine("Элемент добавлен.");
                     break;
+
                 case "2":
                     Console.Write("Введите ключ для поиска: ");
-                    string searchKey = Console.ReadLine();
-                    Console.WriteLine($"Значение: {dictionary.Search(searchKey)}");
+                    string keyToSearch = Console.ReadLine();
+                    string result = hashTableDict.Search(keyToSearch);
+                    if (result != null)
+                    {
+                        Console.WriteLine($"Найдено значение: {result}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Элемент не найден.");
+                    }
                     break;
+
                 case "3":
                     Console.Write("Введите ключ для удаления: ");
-                    string deleteKey = Console.ReadLine();
-                    dictionary.Delete(deleteKey);
+                    string keyToDelete = Console.ReadLine();
+                    bool deleted = hashTableDict.Delete(keyToDelete);
+                    if (deleted)
+                    {
+                        Console.WriteLine("Элемент удалён.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Элемент не найден.");
+                    }
                     break;
-                case "0":
+
+                case "4":
+                    Console.WriteLine("Выход из программы...");
                     return;
+
                 default:
-                    Console.WriteLine("Некорректный ввод.");
+                    Console.WriteLine("Неверный выбор. Попробуйте снова.");
                     break;
             }
         }
